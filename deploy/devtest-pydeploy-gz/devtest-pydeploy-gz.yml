@@ -20,16 +20,18 @@
 
 - hosts: localhost
   gather_facts: no
-  vars_files:
-    - ./pbconfig.yml
   vars:
     cwd: "{{ lookup('env', 'PWD') }}"
+  vars_files:
+    - '{{ cwd }}/pbconfig.yml'
   tasks:
     - name: Run flake8 on current directory
       command: "flake8 {{ cwd }}"
+      ignore_errors: false
 
     - name: Run mypy on current directory
       command: "mypy {{ cwd }}"
+      ignore_errors: true
 
     - name: Calculate current directory hash (md5)
       shell: "find {{ cwd }} -type f -exec md5sum {} + | sort -k 2 | md5sum"
@@ -58,7 +60,7 @@
       when: project_hash_remote is defined
 
     - name: Create gzip artefact of the current directory and place in /tmp
-      command: "tar -czf {{ deployment.local.tarball_path }} -C {{ deployment.local.project_path }} {{ deployment.artefact_exclude }} {{ cwd }}"
+      command: "tar -czf {{ deployment.local.tarball_path }} -C {{ deployment.local.project_path }} -X {{ deployment.exclude_artefact_file }} ."
       when: code_changed
 
     - name: Set permissions on the gzip artefact
@@ -74,14 +76,14 @@
 
 - hosts: deploy_target
   gather_facts: no
-  vars_files:
-    - ./pbconfig.yml
   vars:
     cwd: "{{ lookup('env', 'PWD') }}"
     code_changed: "{{ hostvars['localhost']['code_changed'] }}"
     project_hash: "{{ hostvars['localhost']['project_hash'] }}"
     gzip_hash: "{{ hostvars['localhost']['gzip_hash'].stdout.split(' ')[0] }}"
     remote_venv_path: "{{ deployment.remote.project_path}}/{{ deployment.remote.venv_path }}"
+  vars_files:
+    - '{{ cwd }}/pbconfig.yml'
   tasks:
     - name: Ensure remote project directory exists
       file:
@@ -137,7 +139,7 @@
         requirements: "{{ deployment.remote.project_path }}/requirements.txt"
         virtualenv: "{{ remote_venv_path }}"
         virtualenv_command: "python -m venv"
-      when: "not venv_dir_exists or (venv_dir_exists and not deployment.fast_deploy)"
+      when: (not venv_dir_exists|bool) or (venv_dir_exists and not deployment.fast_deploy)
 
     - name: Run the main Python script
       command: "{{ remote_venv_path }}/bin/python {{ deployment.remote.project_path }}/{{ project.entry_point }}"

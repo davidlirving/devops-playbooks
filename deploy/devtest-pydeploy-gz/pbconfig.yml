@@ -4,9 +4,9 @@ project:
 
 deployment:
   fast_deploy: true # Skips venv state checks
-  artefact_exclude: '--exclude .git --exclude .gitignore'
+  exclude_artefact_file: '{{ cwd }}/.gitignore'
   local:
-    project_path: '.'
+    project_path: '{{ cwd }}'
     tarball_path: '/tmp/{{ project.name }}_deploy_artefact.tar.gz'
   remote:
     project_path: '$HOME/projects/{{ project.name }}'
