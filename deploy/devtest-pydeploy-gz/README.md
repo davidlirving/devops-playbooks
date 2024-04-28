@@ -1,5 +1,5 @@
 # devtest-pydeploy-gz
-This playbook is for quickly checking Python code for errors using Flake8 and mypy, deploying it and then running it on a remote host. This particular version creates a gzip artefact and pushes it to the remote host.
+This playbook is for quickly checking Python code for errors using Flake8 and mypy, deploying it and then running it on a remote host. This particular version creates a gzip artefact and pushes it to the remote host. It will use the venv Python module to manage the Python virtual environment using your project's `requirements.txt`.
 
 This is playbook is better suited for dev/testing environments and is not recommended for production environments.
 
