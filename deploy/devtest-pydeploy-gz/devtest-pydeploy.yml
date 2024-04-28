@@ -22,15 +22,17 @@
   gather_facts: no
   vars_files:
     - ./pbconfig.yml
+  vars:
+    cwd: "{{ lookup('env', 'PWD') }}"
   tasks:
     - name: Run flake8 on current directory
-      command: flake8 .
+      command: "flake8 {{ cwd }}"
 
     - name: Run mypy on current directory
-      command: mypy .
+      command: "mypy {{ cwd }}"
 
     - name: Calculate current directory hash (md5)
-      shell: "find . -type f -exec md5sum {} + | sort -k 2 | md5sum"
+      shell: "find {{ cwd }} -type f -exec md5sum {} + | sort -k 2 | md5sum"
       register: project_hash_base
 
     - name: Set local project hash variable
@@ -56,7 +58,7 @@
       when: project_hash_remote is defined
 
     - name: Create gzip artefact of the current directory and place in /tmp
-      command: "tar -czf {{ deployment.local.tarball_path }} -C {{ deployment.local.project_path }} {{ deployment.artefact_exclude }} ."
+      command: "tar -czf {{ deployment.local.tarball_path }} -C {{ deployment.local.project_path }} {{ deployment.artefact_exclude }} {{ cwd }}"
       when: code_changed
 
     - name: Set permissions on the gzip artefact
@@ -75,10 +77,11 @@
   vars_files:
     - ./pbconfig.yml
   vars:
+    cwd: "{{ lookup('env', 'PWD') }}"
     code_changed: "{{ hostvars['localhost']['code_changed'] }}"
     project_hash: "{{ hostvars['localhost']['project_hash'] }}"
     gzip_hash: "{{ hostvars['localhost']['gzip_hash'].stdout.split(' ')[0] }}"
-    remote_venv_path: '{{ deployment.remote.project_path}}/{{ deployment.remote.venv_path }}'
+    remote_venv_path: "{{ deployment.remote.project_path}}/{{ deployment.remote.venv_path }}"
   tasks:
     - name: Ensure remote project directory exists
       file:
@@ -134,7 +137,7 @@
         requirements: "{{ deployment.remote.project_path }}/requirements.txt"
         virtualenv: "{{ remote_venv_path }}"
         virtualenv_command: "python -m venv"
-      when: 'not venv_dir_exists or (venv_dir_exists and not deployment.fast_deploy)'
+      when: "not venv_dir_exists or (venv_dir_exists and not deployment.fast_deploy)"
 
     - name: Run the main Python script
       command: "{{ remote_venv_path }}/bin/python {{ deployment.remote.project_path }}/{{ project.entry_point }}"
