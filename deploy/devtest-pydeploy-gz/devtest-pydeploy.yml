@@ -1,0 +1,142 @@
+# devtest-pydeploy-gz is a playbook to quickly push to and run python code
+#  on a remote devtest instance.
+# Copyright (C) 2024 David L. Irving
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+---
+- name: Deploy Python application to devtest box
+  hosts: nonprod
+
+- hosts: localhost
+  gather_facts: no
+  vars_files:
+    - ./pbconfig.yml
+  tasks:
+    - name: Run flake8 on current directory
+      command: flake8 .
+
+    - name: Run mypy on current directory
+      command: mypy .
+
+    - name: Calculate current directory hash (md5)
+      shell: "find . -type f -exec md5sum {} + | sort -k 2 | md5sum"
+      register: project_hash_base
+
+    - name: Set local project hash variable
+      set_fact:
+        project_hash: "{{ project_hash_base.stdout.split(' ')[0] }}"
+
+    - name: Check for existing directory hash on remote host
+      command: "cat {{ deployment.remote.project_path }}/project_hash.txt"
+      delegate_to: deploy_target
+      register: remote_hash_base
+      failed_when: false
+      ignore_errors: true
+
+    - name: Set remote project hash variable
+      set_fact:
+        project_hash_remote: "{{ remote_hash_base.stdout.strip() }}"
+      failed_when: false
+      ignore_errors: true
+
+    - name: Compare current directory hash with stored hash on remote host
+      set_fact:
+        code_changed: "{{ project_hash != project_hash_remote }}"
+      when: project_hash_remote is defined
+
+    - name: Create gzip artefact of the current directory and place in /tmp
+      command: "tar -czf {{ deployment.local.tarball_path }} -C {{ deployment.local.project_path }} {{ deployment.artefact_exclude }} ."
+      when: code_changed
+
+    - name: Set permissions on the gzip artefact
+      file:
+        path: "{{ deployment.local.tarball_path }}"
+        mode: '0600'
+      when: code_changed
+
+    - name: Get hash (md5) of the gzip artefact
+      command: "md5sum {{ deployment.local.tarball_path }}"
+      register: gzip_hash
+      when: code_changed
+
+- hosts: deploy_target
+  gather_facts: no
+  vars_files:
+    - ./pbconfig.yml
+  vars:
+    code_changed: "{{ hostvars['localhost']['code_changed'] }}"
+    project_hash: "{{ hostvars['localhost']['project_hash'] }}"
+    gzip_hash: "{{ hostvars['localhost']['gzip_hash'].stdout.split(' ')[0] }}"
+    remote_venv_path: '{{ deployment.remote.project_path}}/{{ deployment.remote.venv_path }}'
+  tasks:
+    - name: Ensure remote project directory exists
+      file:
+        path: "{{ deployment.remote.project_path }}"
+        state: directory
+        mode: '0700'
+
+    - name: Store project hash on remote
+      copy:
+        content: "{{ project_hash }}"
+        dest: "{{ deployment.remote.project_path }}/project_hash.txt"
+      when: code_changed
+
+    - name: Upload the gzip artefact to the remote host
+      copy:
+        src: "{{ deployment.local.tarball_path }}"
+        dest: "{{ deployment.remote.tarball_path }}"
+      when: code_changed
+
+    - name: Check remote hash (md5sum) on the gzip artefact
+      command: "md5sum {{ deployment.remote.tarball_path }}"
+      register: remote_md5sum_output
+      failed_when: "remote_md5sum_output.stdout.split(' ')[0] != gzip_hash "
+      when: code_changed
+
+    - name: Extract the gzip at the remote project path
+      unarchive:
+        src: "{{ deployment.remote.tarball_path }}"
+        dest: "{{ deployment.remote.project_path }}"
+        remote_src: yes
+      when: code_changed
+
+    - name: Clean up local files (gzip)
+      local_action:
+        module: file
+        path: "{{ deployment.local.tarball_path }}"
+        state: absent
+      when: code_changed
+
+    - name: Clean up remote files (gzip)
+      file:
+        path: "{{ deployment.remote.tarball_path }}"
+        state: absent
+      when: code_changed
+
+    - name: Check if remote venv dir exists
+      stat:
+        path: "{{ remote_venv_path }}"
+      register: venv_dir_exists
+
+    - name: Set up venv and install dependencies from requirements.txt
+      pip:
+        requirements: "{{ deployment.remote.project_path }}/requirements.txt"
+        virtualenv: "{{ remote_venv_path }}"
+        virtualenv_command: "python -m venv"
+      when: 'not venv_dir_exists or (venv_dir_exists and not deployment.fast_deploy)'
+
+    - name: Run the main Python script
+      command: "{{ remote_venv_path }}/bin/python {{ deployment.remote.project_path }}/{{ project.entry_point }}"
+      args:
+        chdir: "{{ deployment.remote.project_path }}"
