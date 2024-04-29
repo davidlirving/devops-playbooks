@@ -27,28 +27,30 @@
   tasks:
     - name: Run flake8 on current directory
       command: "flake8 {{ cwd }}"
-      ignore_errors: false
+      when: project.lint.enabled
+      ignore_errors: "{{ project.lint.ignore_errors }}"
 
     - name: Run mypy on current directory
       command: "mypy {{ cwd }}"
-      ignore_errors: true
+      when: project.static_typing.enabled
+      ignore_errors: "{{ project.static_typing.ignore_errors }}"
 
-    - name: Calculate current directory hash (md5)
+    - name: Calculate current directory hash (md5) (fast_deploy optimisation)
       shell: "find {{ cwd }} -type f -exec md5sum {} + | sort -k 2 | md5sum"
       register: project_hash_base
 
-    - name: Set local project hash variable
+    - name: Set local project hash variable (fast_deploy optimisation)
       set_fact:
         project_hash: "{{ project_hash_base.stdout.split(' ')[0] }}"
 
-    - name: Check for existing directory hash on remote host
+    - name: Check for existing directory hash on remote host (fast_deploy optimisation)
       command: "cat {{ deployment.remote.project_path }}/project_hash.txt"
       delegate_to: deploy_target
       register: remote_hash_base
       failed_when: false
       ignore_errors: true
 
-    - name: Set remote project hash variable
+    - name: Set remote project hash variable (fast_deploy optimisation)
       set_fact:
         project_hash_remote: "{{ remote_hash_base.stdout.strip() }}"
       failed_when: false
@@ -58,6 +60,11 @@
       set_fact:
         code_changed: "{{ project_hash != project_hash_remote }}"
       when: project_hash_remote is defined
+
+    - name: Set code_changed to true if flag enabled
+      set_fact:
+        code_changed: true
+      when: deployment.fast_deploy.always_push_code
 
     - name: Create gzip artefact of the current directory and place in /tmp
       command: "tar -czf {{ deployment.local.tarball_path }} -C {{ deployment.local.project_path }} -X {{ deployment.exclude_artefact_file }} ."
@@ -140,7 +147,7 @@
         requirements: "{{ deployment.remote.project_path }}/requirements.txt"
         virtualenv: "{{ remote_venv_path }}"
         virtualenv_command: "python -m venv"
-      when: (deployment.remote.venv.use) and ((not venv_dir_exists|bool) or (venv_dir_exists and not deployment.fast_deploy))
+      when: (deployment.remote.venv.use) and ((not venv_dir_exists|bool) or (venv_dir_exists and deployment.fast_deploy.always_check_venv))
 
     - name: Run the main Python script
       command: "{{ remote_venv_path }}/bin/python {{ deployment.remote.project_path }}/{{ project.entry_point }}"

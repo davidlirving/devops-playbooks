@@ -1,9 +1,17 @@
 project:
   name: 'testapp'
   entry_point: 'main.py'
+  lint:
+    enabled: true
+    ignore_errors: false
+  static_typing:
+    enabled: true
+    ignore_errors: true
 
 deployment:
-  fast_deploy: true # Skips venv state checks
+  fast_deploy:
+    always_push_code: false # if false, only push if project checksum changes
+    always_check_venv: false
   run_on_finish: true
   exclude_artefact_file: '{{ cwd }}/.gitignore'
   local:
