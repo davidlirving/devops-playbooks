@@ -17,6 +17,9 @@ nonprod:
     deploy_target:
       ansible_host: mynonprodserver
       ansible_user: ec2-user
+      ansible_become: true
+      ansible_become_method: sudo
+      ansible_become_user: yourusername
 ```
 Go to the project directory that want to deploy and create `pbconfig.yml`. See the provided one for more information.
 
