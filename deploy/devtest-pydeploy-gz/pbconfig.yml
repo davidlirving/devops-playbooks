@@ -5,7 +5,6 @@ project:
 deployment:
   fast_deploy: true # Skips venv state checks
   run_on_finish: true
-  use_venv: true
   exclude_artefact_file: '{{ cwd }}/.gitignore'
   local:
     project_path: '{{ cwd }}'
@@ -13,4 +12,6 @@ deployment:
   remote:
     project_path: '$HOME/projects/{{ project.name }}'
     tarball_path: '/tmp/{{ project.name }}_deploy_artefact.tar.gz'
-    venv_path: 'venv'
+    venv:
+      use: true
+      path: 'venv'
