@@ -4,6 +4,8 @@ project:
 
 deployment:
   fast_deploy: true # Skips venv state checks
+  run_on_finish: true
+  use_venv: true
   exclude_artefact_file: '{{ cwd }}/.gitignore'
   local:
     project_path: '{{ cwd }}'

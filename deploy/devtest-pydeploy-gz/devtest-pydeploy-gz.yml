@@ -133,15 +133,17 @@
       stat:
         path: "{{ remote_venv_path }}"
       register: venv_dir_exists
+      when: deployment.use_venv
 
     - name: Set up venv and install dependencies from requirements.txt
       pip:
         requirements: "{{ deployment.remote.project_path }}/requirements.txt"
         virtualenv: "{{ remote_venv_path }}"
         virtualenv_command: "python -m venv"
-      when: (not venv_dir_exists|bool) or (venv_dir_exists and not deployment.fast_deploy)
+      when: (deployment.use_venv) and ((not venv_dir_exists|bool) or (venv_dir_exists and not deployment.fast_deploy))
 
     - name: Run the main Python script
       command: "{{ remote_venv_path }}/bin/python {{ deployment.remote.project_path }}/{{ project.entry_point }}"
       args:
         chdir: "{{ deployment.remote.project_path }}"
+      when: deployment.run_on_finish
